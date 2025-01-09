@@ -1,0 +1,192 @@
+---
+title: "Test of McNemar's test vs paired t test on paired binomial data"
+author: "John Willoughby"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Introduction
+
+In a previous report (https://github.com/johnwillo/chi-square-vs-t-test) I examined whether an independent-sample t test could be used in lieu of a chi-square test on binomial data sets. The conclusion was that for binomial probabilities of 0.1 or greater and sample sizes of 100 or greater, the p values from the independent-sample t test were essentially the same as those from the chi-square test. This report looks at whether the paired-sample t test can be used in place of McNemar's test for paired binomial data. 
+
+
+## McNemar and paired t tests on 20 different sampling scenarios
+
+Let's examine 20 different several sampling scenarios. In each of these scenarios we'll set the probability of each of the two samples to be the same, so we're essentially assuming that the two samples come from the same population, which means we're examining the null distribution for a population corresponding to the specified frequency. The two samples are correlated, as we would hope the samples would be in a monitoring design using paired sampling units. The correlation is set to about 0.7. We'll set the number of simulations to 1000 for each comparison.
+
+Note that I am not setting a random number seed for these simulations, so if you run the simulations you will get somewhat different results.
+
+Loaded needed packages.
+```{r message = FALSE}
+library(tidyverse) # Loads ggplot2, dplyr, and several other packages
+library(flextable) # To produce tables
+```
+
+Run the function below which creates correlated random binomial variables for use in this analysis. Because the for loop below makes use of this function, if you haven't first run the function the for loop will fail.
+
+```{r}
+rcorrbinom <- function(n, size = 1, prob1, prob2, corr = 0) {
+  
+  #Check inputs
+  if (!is.numeric(n))             { stop('Error: n must be numeric') }
+  if (length(n) != 1)             { stop('Error: n must be a single number') }
+  if (as.integer(n) != n)         { stop('Error: n must be a positive integer') }
+  if (n < 1)                      { stop('Error: n must be a positive integer') }
+  if (!is.numeric(size))          { stop('Error: n must be numeric') }
+  if (length(size) != 1)          { stop('Error: n must be a single number') }
+  if (as.integer(size) != size)   { stop('Error: n must be a positive integer') }
+  if (size < 1)                   { stop('Error: n must be a positive integer') }
+  if (!is.numeric(prob1))         { stop('Error: prob1 must be numeric') }
+  if (length(prob1) != 1)         { stop('Error: prob1 must be a single number') }
+  if (prob1 < 0)                  { stop('Error: prob1 must be between 0 and 1') }
+  if (prob1 > 1)                  { stop('Error: prob1 must be between 0 and 1') }
+  if (!is.numeric(prob2))         { stop('Error: prob2 must be numeric') }
+  if (length(prob2) != 1)         { stop('Error: prob2 must be a single number') }
+  if (prob2 < 0)                  { stop('Error: prob2 must be between 0 and 1') }
+  if (prob2 > 1)                  { stop('Error: prob2 must be between 0 and 1') }
+  if (!is.numeric(corr))          { stop('Error: corr must be numeric') }
+  if (length(corr) != 1)          { stop('Error: corr must be a single number') }
+  if (corr < -1)                  { stop('Error: corr must be between -1 and 1') }
+  if (corr > 1)                   { stop('Error: corr must be between -1 and 1') }
+  
+  #Compute probabilities
+  P00   <- (1 - prob1)*(1 - prob2) + corr*sqrt(prob1*prob2*(1 - prob1)*(1 - prob2))
+  P01   <- 1 - prob1 - P00
+  P10   <- 1 - prob2 - P00
+  P11   <- P00 + prob1 + prob2 - 1
+  PROBS <- c(P00, P01, P10, P11)
+  if (min(PROBS) < 0)       { stop('Error: corr is not in the allowable range') }
+  
+  #Generate the output
+  RAND <- array(sample.int(4, size = n*size, replace = TRUE, prob = PROBS),
+                dim = c(n, size))
+  VALS <- array(0, dim = c(2, n, size))
+  OUT  <- array(0, dim = c(2, n))
+  for (i in 1:n)    { 
+    for (j in 1:size) { 
+      VALS[1,i,j] <- (RAND[i,j] %in% c(3, 4))
+      VALS[2,i,j] <- (RAND[i,j] %in% c(2, 4)) } 
+    OUT[1, i]   <- sum(VALS[1,i,])
+    OUT[2, i]   <- sum(VALS[2,i,]) }
+  
+  #Give output
+  OUT }
+
+```
+
+
+The following combinations of probability and sample size are run. Because data are paired, sample size is the same for both samples. 
+
+
+| Probability |  n   |
+|:-----------:|:----:|
+|    0.01     |  50  |
+|    0.01     | 100  |
+|    0.01     | 200  |
+|    0.01     | 500  |
+|    0.01     | 1000 |
+|    0.05     |  50  |
+|    0.05     | 100  |
+|    0.05     | 200  |
+|    0.05     | 500  |
+|    0.05     | 1000 |
+|    0.10     |  50  |
+|    0.10     | 100  |
+|    0.10     | 200  |
+|    0.10     | 500  |
+|    0.10     | 1000 |
+|    0.20     |  50  |
+|    0.20     | 100  |
+|    0.20     | 200  |
+|    0.20     | 500  |
+|    0.20     | 1000 |
+|    0.50     |  50  |
+|    0.50     | 100  |
+|    0.50     | 200  |
+|    0.50     | 500  |
+|    0.50     | 1000 |
+
+Set the number of simulations to run.
+
+```{r}
+nreps <- 100
+```
+
+Create a data frame with combinations of probabilities and sample sizes, and enough rows to accommodate the number of simulations in nreps above. Add columns p_mcn and p_t and fill with NA. The p values for these columns will be filled in by the for loop below.
+
+```{r}
+combos <- data.frame(p = rep(c(0.01, 0.05, 0.10, 0.2, 0.5), 
+                            each = 5, times = nreps),
+                    n = rep(c(50, 100, 200, 500, 1000), 
+                            times = nreps),
+                    p_mcn = rep(NA, times = 5 * nreps),
+                    p_t = rep(NA, times = 5 * nreps))
+
+```
+
+The for loop below takes the probability and sample sizes in each row of the combos data frame created above, draws two correlated random binomial samples, performs McNemar and t tests on each pair of samples and records the p value for each test. (Remember to run the rcorrbinom() function first).
+
+```{r warning = FALSE}
+
+for(i in 1:nrow(combos)){
+ mat <- t(rcorrbinom(n = combos$n[i], size = 1, prob1 = combos$p[i], prob2 = combos$p[i], corr = 0.7))
+ try({p_mcn = mcnemar.test(table(mat[,1], mat[,2]),
+         correct = FALSE)$p.value}, silent = TRUE)
+  
+  
+  p_t <- t.test(mat[,1], mat[,2], paired = TRUE)$p.value
+  
+  combos[i,3] <- p_mcn
+  combos[i,4] <- p_t
+}
+
+```
+
+Calculate the difference between the p values for each of the McNemar and paired t tests and then calculate summary stats for each combination of p and n. Summary stats include the mean difference between the two p values (McNemar minus t), the minimum difference, the maximum difference, and the number of absolute differences greater than 0.005. I set the threshold to 0.005 because any difference less than that I consider to support the conclusion that the paired t test is essentially equivalent to the McNemar test. I also calculate the proportion of times the p value from the t test is greater than the p value from the McNemar test.
+
+For small probability and sample size some of the McNemar and paired t tests in the simulation above fail. Any t tests that fail return a NaN value, but if the McNemar test fails the for loop quits. To get around this I've used the try() function to skip over any McNemar test results that fail. Because this results in some NaN values, we use na.rm = TRUE below to disregard those results. 
+
+```{r message = FALSE}
+sum.stats <- combos |> 
+  mutate(p_mcn = as.numeric(p_mcn)) |> 
+  mutate(diff = p_mcn - p_t) |> 
+  group_by(p, n) |> 
+  summarise(mn.diff = mean(diff, na.rm = TRUE),
+           prop.abs.diff.greater.0.005 = (sum(abs(diff) > 0.005,
+                                              na.rm = TRUE))/nreps,
+           min.diff = min(diff, na.rm = TRUE),
+           max.diff = max(diff, na.rm = TRUE),
+           prop.t.greater.mcn = (sum(diff < 0, na.rm = TRUE))/nreps)
+```
+
+Put the results in a table.
+
+```{r}
+   
+ft <- flextable(sum.stats,
+               col_keys = c("p", "n", "mn.diff", "min.diff", "max.diff", 
+                            "prop.abs.diff.greater.0.005", "prop.t.greater.mcn")
+)
+ft <- set_caption(ft,
+                 caption = paste0("Differences between p values from McNemar",
+                                  " and paired t tests on correlated random binomial samples for various",
+                                  " sample sizes and probabilities based on ", nreps,
+                                  " simulations of each combination.")) |> 
+  colformat_double(j = c("mn.diff", "min.diff", "max.diff"), digits = 4)  |> 
+  set_header_labels(ft, p = "Probability",
+                    mn.diff = "Mean difference between P values from McNemar and paired t tests",
+                    min.diff = "Minimum difference between P values from McNemar and paired t tests",
+                    max.diff = "Maximum difference between P values from McNemar and pairedt tests",
+                    prop.abs.diff.greater.0.005 = "Proportion of simulations with absolute difference > 0.005",
+                    prop.t.greater.mcn = "Proportion of simulations with P value from paired t test > P value from McNemar test")
+
+ft
+```
+
+If the mean difference in p values for the two tests is close to zero and there is a low proportion of simulations (preferably 0) with an absolute difference in p values \> 0.005, we'd feel comfortable using a paired t test in lieu of a McNemar test on binomial data. 
+
+For probabilities of 0.05 and greater and sample sizes of 100 or more, these criteria are met and the paired t test can be considered to be as good as the McNemar test. For a probability of 0.01, the sample size must be 500 or greater before the two tests can be considered to be equivalent. 
+
+It's likely that neither p value can be trusted at probabilities of 0.05 or lower and a sample size of 50 or smaller. 
+
+As was the case with the p value comparisons between the chi-square and independent-sample t test, a high proportion of the p values from the paired t test are greater than those from McNemar's test, though these differences are very small in most cases.
