@@ -1,1 +1,2 @@
-# McNemar-vs-paired-t-test
+# Test of McNemar vs paired t test type I error rates on paired binomial data.
+In a previous report (https://github.com/johnwillo/chi-square-vs-t-test) I examined whether an independent-sample t test could be used in lieu of a chi-square test on binomial data sets. The conclusion was that for binomial probabilities of 0.1 or greater and sample sizes of 100 or greater, the p values from the independent-sample t test were essentially the same as those from the chi-square test. This report looks at whether the paired-sample t test can be used in place of McNemar's test for paired binomial data. 
