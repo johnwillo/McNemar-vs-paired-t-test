@@ -190,3 +190,4 @@ For probabilities of 0.05 and greater and sample sizes of 100 or more, these cri
 It's likely that neither p value can be trusted at probabilities of 0.05 or lower and a sample size of 50 or smaller. 
 
 As was the case with the p value comparisons between the chi-square and independent-sample t test, a high proportion of the p values from the paired t test are greater than those from McNemar's test, though these differences are very small in most cases.
+
