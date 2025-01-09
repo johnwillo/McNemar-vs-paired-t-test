@@ -109,7 +109,7 @@ The following combinations of probability and sample size are run. Because data 
 Set the number of simulations to run.
 
 ```{r}
-nreps <- 100
+nreps <- 1000
 ```
 
 Create a data frame with combinations of probabilities and sample sizes, and enough rows to accommodate the number of simulations in nreps above. Add columns p_mcn and p_t and fill with NA. The p values for these columns will be filled in by the for loop below.
